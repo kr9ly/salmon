@@ -1,0 +1,35 @@
+apply plugin: 'java'
+apply plugin: 'groovy'
+apply plugin: 'maven'
+
+group = "net.kr9ly"
+archivesBaseName = "salmon"
+version = "0.0.1"
+
+def defaultEncoding = 'UTF-8'
+tasks.withType(AbstractCompile) each { it.options.encoding = defaultEncoding }
+
+repositories {
+    mavenCentral()
+}
+
+compileTestGroovy {
+    options.encoding = defaultEncoding
+}
+
+dependencies {
+    testCompile "org.codehaus.groovy:groovy-all:2.4.3"
+    testCompile "org.spockframework:spock-core:1.0-groovy-2.4"
+}
+
+ext {
+    mavenRepository = getProperty("maven.repopath")
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            repository(url: uri(mavenRepository))
+        }
+    }
+}
