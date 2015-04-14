@@ -5,10 +5,10 @@ import net.kr9ly.salmon.error.OnEventError;
 import net.kr9ly.salmon.event.Event;
 import net.kr9ly.salmon.event.EventState;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -40,13 +40,11 @@ public class TreeEventBus {
         return new TreeEventBus(null, dispatcher);
     }
 
-    private final TreeEventBus parent;
-
     private final EventDispatcher dispatcher;
 
-    private final Map<Class<?>, Set<Object>> events = new HashMap<>();
+    private final Map<Class<?>, Subscribers> events = new HashMap<>();
 
-    private final Set<OnEventError> errorHandlers = Collections.synchronizedSet(new HashSet<OnEventError>());
+    private final ErrorHandlers errorHandlers = new ErrorHandlers();
 
     private final EventInvocationHandler invocationHandler;
 
@@ -56,7 +54,9 @@ public class TreeEventBus {
 
     private final Lock writeLock = rwLock.writeLock();
 
-    private volatile boolean isShutdown = false;
+    /* package */ final TreeEventBus parent;
+
+    /* package */ volatile boolean isShutdown = false;
 
     private TreeEventBus(TreeEventBus parent, EventDispatcher dispatcher) {
         this.parent = parent;
@@ -86,8 +86,7 @@ public class TreeEventBus {
             if (eventClass.getAnnotation(Event.class) == null) {
                 continue;
             }
-            Set<Object> subscribers = getSubscribers(eventClass);
-            subscribers.add(subscriber);
+            getSubscribers(eventClass).add(subscriber);
         }
     }
 
@@ -116,16 +115,16 @@ public class TreeEventBus {
         }
     }
 
-    private Set<Object> getSubscribers(Class<?> eventClass) {
+    private Subscribers getSubscribers(Class<?> eventClass) {
         readLock.lock();
         try {
-            Set<Object> subscribers = events.get(eventClass);
+            Subscribers subscribers = events.get(eventClass);
             if (subscribers == null) {
                 readLock.unlock();
                 writeLock.lock();
                 try {
                     if (!events.containsKey(eventClass)) {
-                        subscribers = Collections.synchronizedSet(new HashSet<>());
+                        subscribers = new Subscribers();
                         events.put(eventClass, subscribers);
                     } else {
                         subscribers = events.get(eventClass);
@@ -142,42 +141,10 @@ public class TreeEventBus {
     }
 
     /* package */ EventState dispatchEvent(Class<?> eventClass, Method method, Object[] args) {
-        for (Object subcriber : getSubscribers(eventClass)) {
-            try {
-                if (isShutdown) {
-                    return EventState.PASS;
-                }
-                EventState state = (EventState) method.invoke(subcriber, args);
-                if (state == EventState.RESOLVE) {
-                    return EventState.RESOLVE;
-                }
-            } catch (ClassCastException e) {
-                throw new Error("Event return type Must be EventState.");
-            } catch (IllegalAccessException e) {
-                throw new Error(e);
-            } catch (InvocationTargetException e) {
-                return handleError(e.getCause());
-            }
-        }
-        if (parent != null && !isShutdown) {
-            return parent.dispatchEvent(eventClass, method, args);
-        }
-        return EventState.PASS;
+        return getSubscribers(eventClass).dispatchEvent(this, eventClass, method, args);
     }
 
-    private EventState handleError(Throwable e) {
-        for (OnEventError errorHandler : errorHandlers) {
-            if (isShutdown) {
-                return EventState.PASS;
-            }
-            EventState state = errorHandler.onEventError(e);
-            if (state == EventState.RESOLVE) {
-                return EventState.RESOLVE;
-            }
-        }
-        if (parent != null && !isShutdown) {
-            return parent.handleError(e);
-        }
-        return EventState.PASS;
+    /* package */ EventState handleError(Throwable e) {
+        return errorHandlers.handleError(this, e);
     }
 }

@@ -1,6 +1,6 @@
 # Salmon - A hierarchical event bus
 
-[![Circle CI](https://circleci.com/gh/kr9ly/salmon/tree/master.svg?style=svg)](https://circleci.com/gh/kr9ly/salmon/tree/master)
+[![Circle CI](https://circleci.com/gh/kr9ly/salmon/tree/master.svg?style=shield)](https://circleci.com/gh/kr9ly/salmon/tree/master)
 
 A hierarchical event bus.
 
@@ -15,7 +15,7 @@ maven { url 'http://kr9ly.github.io/maven/' }
 And Add this to `dependencies` block in your build.gradle
 
 ```
-compile 'net.kr9ly:salmon:0.0.1'
+compile 'net.kr9ly:salmon:0.0.2'
 ```
 
 ### Basic
