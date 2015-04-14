@@ -8,11 +8,10 @@ import net.kr9ly.salmon.event.EventState;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Copyright 2015 kr9ly
@@ -45,11 +44,17 @@ public class TreeEventBus {
 
     private final EventDispatcher dispatcher;
 
-    private final Map<Class<?>, Set<Object>> events = new ConcurrentHashMap<>();
+    private final Map<Class<?>, Set<Object>> events = new HashMap<>();
 
     private final Set<OnEventError> errorHandlers = Collections.synchronizedSet(new HashSet<OnEventError>());
 
     private final EventInvocationHandler invocationHandler;
+
+    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
+
+    private final Lock readLock = rwLock.readLock();
+
+    private final Lock writeLock = rwLock.writeLock();
 
     private volatile boolean isShutdown = false;
 
@@ -101,18 +106,39 @@ public class TreeEventBus {
      * Shutdown void.
      */
     public void shutdown() {
-        isShutdown = true;
-        events.clear();
-        errorHandlers.clear();
+        writeLock.lock();
+        try {
+            isShutdown = true;
+            events.clear();
+            errorHandlers.clear();
+        } finally {
+            writeLock.unlock();
+        }
     }
 
-    private synchronized Set<Object> getSubscribers(Class<?> eventClass) {
-        Set<Object> subscribers = events.get(eventClass);
-        if (subscribers == null) {
-            events.put(eventClass, Collections.synchronizedSet(new HashSet<>()));
-            subscribers = events.get(eventClass);
+    private Set<Object> getSubscribers(Class<?> eventClass) {
+        readLock.lock();
+        try {
+            Set<Object> subscribers = events.get(eventClass);
+            if (subscribers == null) {
+                readLock.unlock();
+                writeLock.lock();
+                try {
+                    if (!events.containsKey(eventClass)) {
+                        subscribers = Collections.synchronizedSet(new HashSet<>());
+                        events.put(eventClass, subscribers);
+                    } else {
+                        subscribers = events.get(eventClass);
+                    }
+                } finally {
+                    readLock.lock();
+                    writeLock.unlock();
+                }
+            }
+            return subscribers;
+        } finally {
+            readLock.unlock();
         }
-        return subscribers;
     }
 
     /* package */ EventState dispatchEvent(Class<?> eventClass, Method method, Object[] args) {
