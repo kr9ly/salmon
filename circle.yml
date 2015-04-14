@@ -1,13 +1,27 @@
 machine:
-    java:
-        version: openjdk7
+  java:
+    version: openjdk7
 checkout:
-    post:
-      - echo "maven.repopath=./maven" > ./gradle.properties
+  post:
+    - echo "maven.repopath=./build/maven" > ./gradle.properties
 test:
-    override:
-      - ./gradlew test
-    post:
-      # Copy the test metadata to the reports folder
-      - mkdir -p $CIRCLE_TEST_REPORTS/junit/
-      - find . -type f -regex "./build/test-results/.*xml" -exec cp {} $CIRCLE_TEST_REPORTS/junit/ \;
+  override:
+    - ./gradlew test
+  post:
+    # Copy the test metadata to the reports folder
+    - mkdir -p $CIRCLE_TEST_REPORTS/junit/
+    - find . -type f -regex "./build/test-results/.*xml" -exec cp {} $CIRCLE_TEST_REPORTS/junit/ \;
+deployment:
+  maven:
+    branch: master
+    commands:
+      - ./gradlew uploadArchives
+      - cp -rf ./build/maven/ $CIRCLE_ARTIFACTS/maven/
+      - git clone "https://github.com/kr9ly/maven" /tmp/maven
+      - cp -rf ./build/maven/ /tmp/maven/
+      - cd /tmp/maven
+      - git add -A .
+      - git config user.name ${GIT_USER_NAME}
+      - git config user.email ${GIT_USER_EMAIL}
+      - git commit -m 'Commit from CircleCI'
+      - git push origin master
